@@ -172,3 +172,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Pytorch files:
+*.pt
+*.pth
+
+# Docker files:
+Dockerfile
