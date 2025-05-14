@@ -176,3 +176,6 @@ cython_debug/
 # Pytorch files:
 *.pt
 *.pth
+
+# Docker files:
+Dockerfile
