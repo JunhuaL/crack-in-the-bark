@@ -4,7 +4,7 @@ metadata:
   generateName: ${USER}-job-generate-${JOB_SUFFIX}
   labels:
     eidf/user: ${USER}
-    kueue.x-k8s.io/queue-name: ${QUEUE_NAME}
+    kueue.x-k8s.io/queue-name: ${KUBE_USER_QUEUE}
     kueue.x-k8s.io/priority-class: batch-workload-priority
 spec:
   completions: 1
@@ -36,7 +36,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: crack-in-the-bark
-          image: mjuarezm/tree-ring:latest  # Ensure CUDA version matches host drivers
+          image: linjunhua3/crack-bark:latest  # Ensure CUDA version matches host drivers
           workingDir: "/workspace/kubernets"
           env:
             - name: PYTHONPATH
@@ -58,7 +58,7 @@ spec:
               python generate_data.py --run_name="imagenet_data" \
                                       --model_id="512x512_diffusion" \
                                       --gen_with_wm \
-                                      --w_channel=3 \
+                                      --w_channel=2 \
                                       --w_pattern="ring" \
                                       --device="cuda" \
               
@@ -71,9 +71,9 @@ spec:
               cpu: "4"
               memory: "32Gi"
           volumeMounts:
-            - name: data_storage
+            - name: datastorage
               mountPath: /workspace/data_storage
       volumes:
-        - name: data_storage
+        - name: datastorage
           persistentVolumeClaim:
             claimName: ${USER}-ws1

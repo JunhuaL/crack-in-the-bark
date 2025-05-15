@@ -1,13 +1,18 @@
 from typing import Callable, Optional
-from script_util import *
+from .script_util import *
 import torch
+
+class OutputWrapper:
+    def __init__(self, outputs):
+        self.images = outputs
 
 class GuidedDiffusionPipeline:
     def __init__(self, model_params: dict, num_images: int, device: str):
         self.model_params = model_and_diffusion_defaults()
         self.model_params.update(model_params)
 
-        self.model, self.diffusion = create_model_and_diffusion(**self.model_params)
+        temp_params = dict([(key,self.model_params[key]) for key in model_and_diffusion_defaults().keys()])
+        self.model, self.diffusion = create_model_and_diffusion(**temp_params)
 
         self.model.load_state_dict(torch.load(self.model_params['model_path']))
         self.model.to(device)
@@ -54,7 +59,8 @@ class GuidedDiffusionPipeline:
                     device=self.device,
                     return_image=True,
                 )
+        outputs = OutputWrapper(outputs)
         return outputs
     
-    def get_random_latents(self):
+    def get_random_latents(self, height=None, width=None):
         return torch.randn(*self.shape, device=self.device)

@@ -1,1 +1,1 @@
-from inverse_stable_diffusion import InversableStableDiffusionPipeline
+from models.inversable_stable_diffusion.inverse_stable_diffusion import InversableStableDiffusionPipeline

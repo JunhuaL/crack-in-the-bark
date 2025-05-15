@@ -49,6 +49,14 @@ class Logger:
             raise SystemError(f"Could not make new directory: {exp_dir}")
 
         try:
+            if not os.path.exists(exp_media):
+                os.mkdir(exp_media)
+            else:
+                raise RuntimeError()
+        except:
+            raise SystemError(f"Could not make new directory: {exp_media}")
+
+        try:
             exp_tables = os.path.join(exp_media, 'table')
             
             if not os.path.exists(exp_tables):
@@ -111,12 +119,12 @@ class Logger:
             tmp_row = list(row)
             for j, item in enumerate(tmp_row):
                 if isinstance(item, LogImage):
-                    path = self.columns[self.columns.keys()[j]]
+                    path = self.columns[list(self.columns.keys())[j]]
                     img = item.data
                     img.save(os.path.join(path, f"{i}.png"),'PNG')
                     tmp_row[j] = i
                 if isinstance(item, torch.Tensor):
-                    key = self.columns.keys()[j]
+                    key = list(self.columns.keys())[j]
                     if tensor_data.get(key):
                         tensor_data[key].append(item)
                     else:

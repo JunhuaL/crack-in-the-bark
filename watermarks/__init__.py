@@ -1,1 +1,1 @@
-from tree_ring import TreeRingWm
+from watermarks.tree_ring import TreeRingWm

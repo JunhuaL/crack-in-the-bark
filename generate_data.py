@@ -24,6 +24,7 @@ def get_model(args):
         pipe.to(args.device)
     elif args.model_id == '512x512_diffusion':
         model_params = read_json(f'{args.model_id}.json')
+        model_params['timestep_respacing'] = f'ddim{args.num_inference_steps}'
         pipe = GuidedDiffusionPipeline( model_params, num_images = args.num_images, device = args.device )
     return pipe
 
@@ -82,8 +83,9 @@ def build_experiment(args):
 def main(args):
     logger, pipe, dataset, wm_injector = build_experiment(args)
 
+    guided_diffusion_prompts = isinstance(pipe, GuidedDiffusionPipeline)
     for prompt in tqdm(dataset):
-        log_entry = [prompt]
+        log_entry = [prompt if not guided_diffusion_prompts else str(prompt["y"].item())]
 
         ### Callback to retrieve intermediate latents
         intermediate_latents = []
