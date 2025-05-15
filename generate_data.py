@@ -2,6 +2,7 @@ from datasets import PromptDataset
 from diffusers import DPMSolverMultistepScheduler
 from models.inversable_stable_diffusion import InversableStableDiffusionPipeline
 from models.guided_diffusion import GuidedDiffusionPipeline
+from models.guided_diffusion.script_util import NUM_CLASSES
 from tqdm import tqdm
 from watermarks import TreeRingWm
 from Logger import LogImage,Logger
@@ -26,6 +27,19 @@ def get_model(args):
         pipe = GuidedDiffusionPipeline( model_params, num_images = args.num_images, device = args.device )
     return pipe
 
+def get_prompt_dataset(args):
+    if args.model_id == 'stabilityai/stable-diffusion-2-1-base':
+        dataset = PromptDataset(args.dataset)
+    elif args.model_id == '512x512_diffusion':
+        dataset = []
+        for i in range(args.max_num_images):
+            model_kwargs = {}
+            classes = torch.randint(
+                low=0, high=NUM_CLASSES, size=(args.num_images,), device=args.device
+            )
+            model_kwargs["y"] = classes
+            dataset.append(model_kwargs)
+    return dataset
 
 def build_experiment(args):
     ### Logger Initialization
@@ -44,7 +58,7 @@ def build_experiment(args):
     pipe = get_model(args)
 
     ### Dataset Intialization
-    dataset = PromptDataset(args.dataset)
+    dataset = get_prompt_dataset(args)
 
     ### Watermark Injector Initialization
     if args.gen_with_wm:
@@ -118,8 +132,6 @@ def main(args):
 
     logger.close()
 
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='generate watermarked images')
     parser.add_argument('--run_name', default='test')
@@ -131,6 +143,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_inference_steps', default=50, type=int)
     parser.add_argument('--gen_with_wm', action='store_true')
     parser.add_argument('--save_raw_latent', action='store_true')
+    parser.add_argument('--max_num_images', default=7000, type=int) ### SPECIFICALLY TO BE USED FOR IMAGENET SINCE ITS NOT PROMPT SPECIFIC
 
     parser.add_argument('--w_channel', default=0, type=int)
     parser.add_argument('--w_pattern', default='rand')

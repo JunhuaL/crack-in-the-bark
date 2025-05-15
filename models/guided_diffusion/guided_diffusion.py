@@ -46,18 +46,11 @@ class GuidedDiffusionPipeline:
         watermarking_delta: float = None,
         watermarking_mask: torch.BoolTensor = None,
     ):
-        model_kwargs = {}
-        if self.model_params['class_cond']:
-            classes = torch.randint(
-                low=0, high=NUM_CLASSES, size=(self.num_images,), device=self.device
-            )
-            model_kwargs["y"] = classes
-
         outputs = self.diffusion.ddim_sample_loop(
                     model=self.model,
                     shape=self.shape,
                     noise=latents,
-                    model_kwargs=model_kwargs,
+                    model_kwargs=prompt,
                     device=self.device,
                     return_image=True,
                 )
