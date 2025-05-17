@@ -137,8 +137,13 @@ class TreeRingWm:
         tr_params['w_injection'] = self.w_injection
         tr_params['w_pattern_const'] = self.w_pattern_const
         tr_params['img_shape'] = self.img_shape
-        tr_params['watermark'] = self.watermark.clone().cpu()
-        tr_params['img_shape'] = self.wm_mask.clone().cpu()
+        
+        tmp_watermark = self.watermark.clone().cpu()
+        watermark = {"real": tmp_watermark.real,
+                     "imag": tmp_watermark.imag
+        }
+        tr_params['watermark'] = watermark
+        tr_params['wm_mask'] = self.wm_mask.clone().cpu()
         return tr_params
 
     def save(self, output_dir, filename='tr_params.pth'):
@@ -156,5 +161,8 @@ class TreeRingWm:
         self.w_pattern_const = params['w_pattern_const']
         self.img_shape = params['img_shape']
 
-        self.watermark = params['watermark'].to(self.device)
-        self.wm_mask = params['img_shape'].to(self.device)
+        tmp_watermark = params['watermark']
+        watermark = tmp_watermark['real'].to(torch.cfloat)
+        watermark.imag = tmp_watermark['imag']
+        self.watermark = watermark.to(self.device)
+        self.wm_mask = params['wm_mask'].to(self.device)

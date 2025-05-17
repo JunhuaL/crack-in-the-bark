@@ -15,7 +15,7 @@ import torch
 def get_model(args):
     if args.model_id == 'stabilityai/stable-diffusion-2-1-base':
         scheduler = DPMSolverMultistepScheduler.from_pretrained(args.model_id, subfolder = 'scheduler')
-        pipe = InversableStableDiffusionPipeline(
+        pipe = InversableStableDiffusionPipeline.from_pretrained(
             args.model_id,
             scheduler = scheduler,
             torch_dtype = torch.float16,
@@ -51,7 +51,10 @@ def build_experiment(args):
     if args.gen_with_wm:
         logger_table_specs['wm_img'] = LogImage
     if args.save_raw_latent:
-        logger_table_specs['raw_latent'] = torch.Tensor
+        logger_table_specs['no_wm_raw_latent'] = torch.Tensor
+        if args.gen_with_wm :
+            logger_table_specs['wm_raw_latent'] = torch.Tensor
+    
 
     logger.create_table(logger_table_specs)
 
@@ -88,10 +91,14 @@ def main(args):
         log_entry = [prompt if not guided_diffusion_prompts else str(prompt["y"].item())]
 
         ### Callback to retrieve intermediate latents
-        intermediate_latents = []
+        no_wm_intermediate_latents = []
+        wm_intermediate_latents = []
 
-        def populate_intermediate_latents(step: int, timestep: int, latents: torch.Tensor):
-            intermediate_latents.extend(latents)
+        def populate_unwm_intermediate_latents(step: int, timestep: int, latents: torch.Tensor):
+            no_wm_intermediate_latents.extend(latents)
+
+        def populate_wm_intermediate_latents(step: int, timestep: int, latents: torch.Tensor):
+            wm_intermediate_latents.extend(latents)
         
         init_latents = pipe.get_random_latents()
 
@@ -102,7 +109,7 @@ def main(args):
             height = args.image_size,
             width = args.image_size,
             latents = init_latents,
-            callback = populate_intermediate_latents if args.save_raw_latent else None,
+            callback = populate_unwm_intermediate_latents if args.save_raw_latent else None,
         ).images[0]
 
         log_entry.append(LogImage(no_wm_img))
@@ -118,14 +125,15 @@ def main(args):
                 height = args.image_size,
                 width = args.image_size,
                 latents = init_wm_latents,
-                callback = populate_intermediate_latents if args.save_raw_latent else None,
+                callback = populate_wm_intermediate_latents if args.save_raw_latent else None,
             ).images[0]
 
             log_entry.append(LogImage(wm_img))
 
-        if intermediate_latents:
-            final_timestep_latent = 1 / 0.18215 * intermediate_latents[-1]
-            log_entry.append(final_timestep_latent)
+        if args.save_raw_latent:
+            final_unwm_latent = 1 / 0.18215 * no_wm_intermediate_latents[-1]
+            final_wm_latent = 1 / 0.18215 * wm_intermediate_latents[-1]
+            log_entry.extend([final_unwm_latent,final_wm_latent])
 
         logger.add_data(log_entry)
 

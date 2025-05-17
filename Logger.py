@@ -134,7 +134,7 @@ class Logger:
         
         if tensor_data:
             for key in tensor_data:
-                tensors = torch.stack(tensor_data[key]).unsqueeze(1)
+                tensors = torch.stack(tensor_data[key])
                 idxs = list(range(len(self.data)))
                 torch.save((idxs,tensors), os.path.join(self.columns[key],"data.pt"))
 

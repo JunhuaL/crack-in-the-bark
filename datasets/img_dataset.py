@@ -117,27 +117,44 @@ class ImgDataset(Dataset):
         return len(self.labels)
     
 class LatentDataset(Dataset):
-    def __init__(self,data_dirs,split=None):
+    def __init__(self, data_dirs: str, clss: list, split: list = None):
         self.data = []
         self.labels = []
-        cls = 0
-        for dir in data_dirs:
-            idxs,latents =  torch.load(dir)
-            latents = latents[:,0,:,:,:]
-            if split is not None:
-                latents = latents[split]
-                labels = torch.tensor([cls]*len(split))
-            else:
-                labels = torch.tensor([cls]*len(idxs))
-                
+
+        for dir,cls in zip(data_dirs, clss):
+            idxs,latents = torch.load(dir)
+            latents = latents[split] if split is not None else latents
+            labels = torch.tensor([cls]*len(latents))
             self.data.append(latents)
             self.labels.append(labels)
-            cls+=1
-        self.data = torch.cat(self.data)
+            
+        self.data = torch.concat(self.data)
         self.labels = torch.concat(self.labels)
 
     def __getitem__(self, index):
         return self.data[index],self.labels[index]
 
+    def __len__(self):
+        return len(self.labels)
+
+class ImgDirDataset(Dataset):
+    def __init__(self, data_dirs: str, clss: list, split: list = None):
+        self.data = []
+        self.labels = []
+
+        for dir,cls in zip(data_dirs, clss):
+            img_names = np.array(os.listdir(dir))
+            img_names = img_names[split] if split is not None else img_names
+            for img_name in img_names:
+                img = read_image(os.path.join(dir, img_name)).type(torch.float32)
+                self.data.append(img)
+            labels = torch.tensor([cls]*len(img_names))
+            self.labels.append(labels)
+        self.data = torch.stack(self.data)
+        self.labels = torch.concat(self.labels)
+
+    def __getitem__(self, index):
+        return self.data[index],self.labels[index]
+    
     def __len__(self):
         return len(self.labels)
