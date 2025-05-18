@@ -62,7 +62,7 @@ spec:
                                       --w_pattern="ring" \
                                       --device="cuda" \
               
-              rsync -anv logs /workspace/data_storage/
+              scp -r logs /workspace/data_storage/
               exit_status=$?
               echo "Training finished with exit status $exit_status"
           resources:

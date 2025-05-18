@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: ${USER}-job-train-surrogate-${JOB_SUFFIX}
+  labels:
+    eidf/user: ${USER}
+    kueue.x-k8s.io/queue-name: ${KUBE_USER_QUEUE}
+    kueue.x-k8s.io/priority-class: batch-workload-priority
+spec:
+  completions: 1
+  parallelism: 1
+  completionMode: Indexed
+  backoffLimit: 2147483647
+  activeDeadlineSeconds: 864000
+  template:
+    metadata:
+      labels:
+        eidf/user: ${USER}
+    spec:
+      restartPolicy: OnFailure
+      # Replace nodeSelector with affinity to allow multiple GPU types.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.product
+                    operator: In
+                    values:
+                      - NVIDIA-A100-SXM4-80GB
+      # Add tolerations to allow scheduling on nodes with specific taints.
+      tolerations:
+        - key: "eidf107"
+          operator: "Equal"
+          value: "True"
+          effect: "NoSchedule"
+      containers:
+        - name: crack-in-the-bark
+          image: linjunhua3/crack-bark:latest  # Ensure CUDA version matches host drivers
+          workingDir: "/workspace/kubernets"
+          env:
+            - name: PYTHONPATH
+              value: "/workspace/kubernets"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              echo "Setting up environment..."
+              git clone "https://github.com/JunhuaL/crack-in-the-bark.git" .
+              git checkout feature/port-over
+              
+              scp -r /workspace/data_storage/logs /workspace/kubernets/
+              scp -r /workspace/data_storage/imagenet/fixed_imagenet /workspace/kubernets/
+
+              echo "Starting training..."
+              export PYTHONPATH=$PYTHONPATH:/workspace/kubernets
+              
+              python train_surrogate.py ./logs/run-20250518_005930-imagenet_data-maE1/media/wm_img/ \
+                                        ./logs/run-20250518_005930-imagenet_data-maE1/media/no_wm_img/ \
+                                        ./output/models/ \
+                                        wm_vs_unwm_with_fft \
+                                        --mode=rawpix \
+                                        --vae=none \
+                                        --apply_fft \
+                                        --batch_size=4 \
+                                        --epochs=10 \
+                                        --v
+
+              python train_surrogate.py ./logs/run-20250518_005930-imagenet_data-maE1/media/wm_img/ \
+                                        ./fixed_imagenet/ \
+                                        ./output/models/ \
+                                        wm_vs_pub_with_fft \
+                                        --mode=rawpix \
+                                        --vae=none \
+                                        --apply_fft \
+                                        --batch_size=4 \
+                                        --epochs=10 \
+                                        --v
+
+              python train_surrogate.py ./logs/run-20250518_005930-imagenet_data-maE1/media/wm_img/ \
+                                        ./logs/run-20250518_005930-imagenet_data-maE1/media/no_wm_img/ \
+                                        ./output/models/ \
+                                        wm_vs_unwm_no_fft \
+                                        --mode=rawpix \
+                                        --vae=none \
+                                        --batch_size=4 \
+                                        --epochs=10 \
+                                        --v
+
+              python train_surrogate.py ./logs/run-20250518_005930-imagenet_data-maE1/media/wm_img/ \
+                                        ./fixed_imagenet/ \
+                                        ./output/models/ \
+                                        wm_vs_pub_no_fft \
+                                        --mode=rawpix \
+                                        --vae=none \
+                                        --batch_size=4 \
+                                        --epochs=10 \
+                                        --v
+
+              scp -r output /workspace/data_storage/
+              exit_status=$?
+              echo "Training finished with exit status $exit_status"
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+              cpu: "4"
+              memory: "32Gi"
+          volumeMounts:
+            - name: datastorage
+              mountPath: /workspace/data_storage
+      volumes:
+        - name: datastorage
+          persistentVolumeClaim:
+            claimName: ${USER}-ws1

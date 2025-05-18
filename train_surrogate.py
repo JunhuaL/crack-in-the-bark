@@ -1,16 +1,21 @@
+from datasets import ImgDirDataset, LatentDataset
+from models.surrogate_models import ResNet_18
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from utils import fft_transform, setup_surrogate
+
 import argparse
 import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.model_selection import train_test_split
-from datasets import ImgDirDataset, LatentDataset
-from torch.utils.data import DataLoader
-from models.surrogate_models import ResNet_18
 
 def setup_dataset(args):
-    os.listdir(args.wm_img_folder) + os.listdir(args.unwm_img_folder)
-    train_idxs, test_idxs = train_test_split()
+    total_data = os.listdir(args.wm_img_folder) + os.listdir(args.unwm_img_folder)
+    idxs = list(range(len(total_data)))
+    train_idxs, test_idxs = train_test_split(idxs, test_size=0.15, random_state=args.seed)
+
     if args.mode == 'rawpix':
         train_split = ImgDirDataset([args.wm_img_folder,args.unwm_img_folder],[0,1], train_idxs)
         test_split = ImgDirDataset([args.wm_img_folder,args.unwm_img_folder],[0,1], test_idxs)
@@ -23,41 +28,87 @@ def setup_dataset(args):
     else:
         raise NotImplementedError(f"using unknwon data representation: {args.mode}")
     
+    train_data_len = len(train_split)
+    test_data_len = len(test_split)
+
     train_loader = DataLoader(train_split, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_split, batch_size=args.batch_size, shuffle=True)
 
-    return train_loader, test_loader
+    return train_loader, test_loader, train_data_len, test_data_len
 
-def setup_surrogate(args):
-    ### Only two classes watermarked vs non-watermarked
-    num_classes = 2
+### Add transforms in the order you want to apply them in
+def setup_transforms(args):
+    transforms = []
+    if args.apply_fft:
+        transforms.append(fft_transform)
+    return transforms
 
-    if args.mode == 'rawpix':
-        model_in_dim = 3
-        data_type = None
-    else:
-        if args.model_id in ['stabilityai/stable-diffusion-2-1-base','stabilityai/sdxl-vae']:
-            model_in_dim = 4
-            data_type = torch.cfloat
-        elif args.model_id in ['ostris/vae-kl-f8-d16']:
-            model_in_dim = 16
-            data_type = torch.cfloat
-        else:
-            raise f"Model type for {args.model_id} not implemented."
-        
-    model = ResNet_18(model_in_dim, num_classes, dtype=data_type).to(args.device)
-    criterion = nn.CrossEntropyLoss().to(args.device)
-    optimizer = optim.Adam(model.parameters(), lr = args.lr)
+def inference_loop(model: nn.Module, data: DataLoader, criterion: nn.Module, optimizer: optim.Optimizer, train: bool, device: str, data_transforms: list = []):
+    total_loss = 0
+    correct = 0
+    for imgs, labels in tqdm(data):
+        imgs = imgs.to(device)
+        for transform in data_transforms:
+            imgs = transform(imgs)
 
-    return model, criterion, optimizer
+        labels = labels.long().to(device)
+        preds = model(imgs).real
+        loss = criterion(preds, labels)
+        if train:
+            model.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        total_loss += loss.item()
+        pred_labels = torch.max(preds, 1)[1]
+        correct += (pred_labels==labels).sum().item()
+
+    return total_loss, correct
 
 def main(args):
-    train_data, test_data = setup_dataset(args)
+    print("Loading dataset...")
+    train_data, test_data, train_len, test_len = setup_dataset(args)
+    print("Surrogate model setup...")
     model, criterion, optimizer = setup_surrogate(args)
-
-    best_val_acc = 0.0
-    best_model_state = None
+    transforms = setup_transforms(args)
     
+    best_test_acc = 0.0
+    best_model_state = None
+    print("Training stated!")
+    for epoch in range(args.epochs):
+        model.train()
+        total_loss, correct = inference_loop(model, train_data, criterion, optimizer, True, args.device, transforms)
+        train_loss = total_loss / train_len
+        train_acc = correct / train_len
+
+        model.eval()
+        ### precautionary context manager
+        with torch.no_grad():
+            total_loss, correct = inference_loop(model, test_data, criterion, optimizer, False, args.device, transforms)
+            test_loss = total_loss / test_len
+            test_acc = correct / test_len
+        
+        if test_acc > best_test_acc:
+            best_test_acc = test_acc
+            best_model_state = model.state_dict().copy()
+            if args.v:
+                print(
+                    f"New best model found at epoch {epoch + 1} with test accuracy: {test_acc:.4f}%"
+                )
+        
+        if args.v:
+            print(
+                f"Epoch [{epoch+1}/{args.epochs}], Trn Loss: {train_loss:.4f}, Trn Acc: {train_acc:.4f}, Tst Loss: {test_loss:.4f}, Tst Acc: {test_acc:.4f}"
+            )
+    
+    if not os.path.exists(args.model_save_path):
+        os.makedirs(args.model_save_path, exist_ok=True)
+    model_pth = os.path.join(args.model_save_path, args.model_save_name + ".pth")
+    if best_model_state is not None:
+        torch.save(best_model_state, model_pth)
+    else:
+        torch.save(model.state_dict(), model_pth)
+    return
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="Adversairal surrogate")
@@ -68,15 +119,17 @@ if __name__=='__main__':
 
     parser.add_argument('--mode', default = 'rawpix', choices = ['rawpix','latent','t49latent'], type=str)
     parser.add_argument('--vae', default = 'stabilityai/stable-diffusion-2-1-base',
-                        choices = ['stabilityai/stable-diffusion-2-1-base','stabilityai/sdxl-vae','ostris/vae-kl-f8-d16'],
+                        choices = ['none','stabilityai/stable-diffusion-2-1-base','stabilityai/sdxl-vae','ostris/vae-kl-f8-d16'],
                         type = str
     )
-    parser.add_argument('--use_vae', default=False, type=bool)
+
+    parser.add_argument('--apply_fft', action='store_true')
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--epochs', default=10, type=int)
     parser.add_argument('--lr', default=1e-3, type=float)
     parser.add_argument('--seed', default=999999, type=int)
 
     parser.add_argument('--device', default='cuda', type=str)
+    parser.add_argument('--v', action="store_true")
     args = parser.parse_args()
     main(args)

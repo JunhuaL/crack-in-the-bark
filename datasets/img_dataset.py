@@ -47,21 +47,17 @@ class WmLoader(Dataset):
 
 class ImgLoader(Dataset):
     def __init__(self,data_dir,split=None):
-        img_fps = os.listdir(data_dir)
-        if split is not None:
-            img_fps = [fp for fp in img_fps if int(re.findall('\d+',fp)[0]) in split]
-        img_fps.sort(key=file_key)
+        img_fps = np.array(os.listdir(data_dir))
+        img_fps = img_fps[split] if split is not None else img_fps
         self.img_fps = img_fps
         self.data = [] 
-        self.labels = []
         for img_fp in img_fps:
             img = read_image(os.path.join(data_dir,img_fp)).type(torch.float32)
             self.data.append(img)
         self.data = torch.stack(self.data)
-        self.labels = torch.tensor([int(re.findall('\d+',i)[0]) % 2 for i in img_fps],dtype=torch.float32)
 
     def __getitem__(self, index):
-        return self.data[index],self.labels[index],self.img_fps[index]
+        return self.data[index], self.img_fps[index]
     
     def __len__(self):
         return len(self.data)
@@ -70,51 +66,18 @@ class LatentLoader(Dataset):
     def __init__(self,data_dir,split=None):
         latent_path = data_dir
         data = torch.load(latent_path)
-        img_labels = data[0]
+        idxs = np.array(data[0])
         latents = data[1]
 
         self.latent_max_val = latents.abs().max().detach().cpu().item()
-        self.data = {}
-        if split is not None:
-            for i,latent in enumerate(latents):
-                if img_labels[i] in split:
-                    self.data[img_labels[i]] = latent[0]
-        else:
-            for i,latent in enumerate(latents):
-                self.data[img_labels[i]] = latent[0]
-        
-        self.labels = torch.tensor([key % 2 for key in list(self.data.keys())],dtype=torch.float32)
-        self.idxs = dict(enumerate(list(self.data.keys())))
-
+        self.data = data[split] if split is not None else data     
+        self.idxs = idxs[split] if split is not None else idxs
 
     def __getitem__(self, index):
-        return self.data[self.idxs[index]],self.labels[index],self.idxs[index]
+        return self.data[index], self.idxs[index]
     
     def __len__(self):
-        return len(self.labels)
-    
-class ImgDataset(Dataset):
-    def __init__(self,data_dirs,split=None):
-        self.data = []
-        self.labels = []
-        cls = 0
-        for data_dir in data_dirs:
-            img_files = np.array(os.listdir(data_dir))
-            img_files = img_files[split]
-            for img_file in img_files:
-                img = read_image(os.path.join(data_dir,img_file)).type(torch.float32)
-                self.data.append(img)
-            labels = torch.tensor([cls]*len(img_files))
-            self.labels.append(labels)
-            cls += 1
-        self.data = torch.stack(self.data)
-        self.labels = torch.concat(self.labels)
-
-    def __getitem__(self, index):
-        return self.data[index],self.labels[index]
-    
-    def __len__(self):
-        return len(self.labels)
+        return len(self.data)
     
 class LatentDataset(Dataset):
     def __init__(self, data_dirs: str, clss: list, split: list = None):
@@ -142,16 +105,25 @@ class ImgDirDataset(Dataset):
         self.data = []
         self.labels = []
 
-        for dir,cls in zip(data_dirs, clss):
-            img_names = np.array(os.listdir(dir))
-            img_names = img_names[split] if split is not None else img_names
-            for img_name in img_names:
-                img = read_image(os.path.join(dir, img_name)).type(torch.float32)
-                self.data.append(img)
-            labels = torch.tensor([cls]*len(img_names))
-            self.labels.append(labels)
+        dir_2_clss = dict(zip(data_dirs, clss))
+        img_paths = []
+        for dir in data_dirs:
+            paths = [ os.path.join(dir, img_name) for img_name in os.listdir(dir)]
+            img_paths.extend(paths)
+        
+        split_imgs = np.array(img_paths)
+        split_imgs = split_imgs[split] if split is not None else split_imgs
+
+        for img_path in split_imgs:
+            img = read_image(img_path).type(torch.float32)
+            self.data.append(img)
+            for key in dir_2_clss:
+                if img_path.startswith(key):
+                    cls = dir_2_clss[key]
+            self.labels.append(cls)
+
         self.data = torch.stack(self.data)
-        self.labels = torch.concat(self.labels)
+        self.labels = torch.tensor(self.labels)
 
     def __getitem__(self, index):
         return self.data[index],self.labels[index]
