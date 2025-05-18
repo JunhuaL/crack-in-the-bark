@@ -1,1 +1,1 @@
-from scores.lpips import *
+from scores.lpips.lpips import *

@@ -698,8 +698,7 @@ class GaussianDiffusion:
         if device is None:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
-        
-        img = th.tensor(np.array(image), device=device, dtype=th.float32).unsqueeze(0).permute(0, 3, 1, 2) / 127.5 - 1
+        img = image / 127.5 - 1
 
         indices = list(range(self.num_timesteps))
 

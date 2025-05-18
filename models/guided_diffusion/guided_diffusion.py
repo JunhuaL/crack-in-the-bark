@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Callable, Any
 from .script_util import *
 import torch
 
@@ -64,3 +64,20 @@ class GuidedDiffusionPipeline:
     
     def get_random_latents(self, height=None, width=None):
         return torch.randn(*self.shape, device=self.device)
+    
+    def forward_diffusion(
+        self,
+        latents: torch.FloatTensor = None,
+        text_embeddings: Any = None,
+        guidance_scale: float = 7.5,
+        num_inference_steps: int = 50,
+    ):
+        outputs = self.diffusion.ddim_reverse_sample_loop(
+                    model=self.model,
+                    shape=self.shape,
+                    image=latents,
+                    model_kwargs=text_embeddings,
+                    device=self.device
+        )
+
+        return outputs

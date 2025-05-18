@@ -50,7 +50,7 @@ except ImportError:
         return x
 
 try:
-    from inception import InceptionV3
+    from .inception import InceptionV3
 except:
     from pytorch_fid.inception import InceptionV3
 

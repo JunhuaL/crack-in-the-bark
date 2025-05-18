@@ -107,6 +107,13 @@ class Logger:
             )
         self.data.append(data)
 
+    def get_data(self, key):
+        i = list(self.columns.keys()).index(key)
+        data = []
+        for row in self.data:
+            data.append(row[i])
+        return data
+
     def log(self, data: dict):
         self.logs.append(data)
     

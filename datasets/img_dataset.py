@@ -46,7 +46,7 @@ class WmLoader(Dataset):
         return len(self.data)
 
 class ImgLoader(Dataset):
-    def __init__(self,data_dir,split=None):
+    def __init__(self, data_dir, mapping_table = None, key = None, split=None, device='cpu'):
         img_fps = np.array(os.listdir(data_dir))
         img_fps = img_fps[split] if split is not None else img_fps
         self.img_fps = img_fps
@@ -54,10 +54,21 @@ class ImgLoader(Dataset):
         for img_fp in img_fps:
             img = read_image(os.path.join(data_dir,img_fp)).type(torch.float32)
             self.data.append(img)
-        self.data = torch.stack(self.data)
+        self.data = torch.stack(self.data) 
+        self.key = key
+        self.table = mapping_table
+        self.device = device
 
     def __getitem__(self, index):
-        return self.data[index], self.img_fps[index]
+        if self.table is not None:
+            img_fp = int(self.img_fps[index].split('.')[0])
+            prompt = self.table.loc[self.table[self.key] == img_fp]['prompt'].values[0]
+            if not isinstance(prompt, str):
+                model_kwargs = {"y":torch.tensor(prompt, device=self.device).unsqueeze(0)}
+                prompt = model_kwargs
+            return self.data[index], self.img_fps[index], prompt
+        else:
+            return self.data[index], self.img_fps[index]
     
     def __len__(self):
         return len(self.data)
