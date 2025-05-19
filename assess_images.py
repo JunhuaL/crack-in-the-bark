@@ -167,14 +167,15 @@ def main(args):
     prc_table = pd.DataFrame(prc_table,columns=columns)
     table_dir = logger.table_dir.split('/')[:-1]
     prc_table.to_csv(os.path.join(*table_dir,'PRC_Table.csv'))
-    
+
+    print(f'auroc: {auroc}, auprc: {auprc}, acc: {acc}, TPR@1%FPR: {low}')
     # FID
     fid_value_w = fid_score(
         [args.imagenet_path, args.original_images_path],
         batch_size = 32,
         device = args.device,
         dims = 2048,
-        num_workers = 1,
+        num_workers = 0,
     )
     
     fid_value_adv = fid_score(
@@ -182,7 +183,7 @@ def main(args):
         batch_size = 32,
         device = args.device,
         dims = 2048,
-        num_workers = 1,
+        num_workers = 0,
     )
 
     final_log = {
@@ -190,7 +191,6 @@ def main(args):
         'fid_adv': abs(fid_value_w - fid_value_adv),
     }
 
-    print(f'auroc: {auroc}, auprc: {auprc}, acc: {acc}, TPR@1%FPR: {low}')
     print(f'fid_adv: {abs(fid_value_w - fid_value_adv)}')
 
     if clip_score is not None:

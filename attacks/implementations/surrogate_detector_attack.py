@@ -71,7 +71,7 @@ class SurrogateDetectorAttack(Attack):
 
         for step in range(self.n_steps):
             self.model.zero_grad()
-            adv_data = init_data.clone().to(self.device) + pgd_gradients
+            adv_data = init_data.clone().to(self.device) - pgd_gradients
             adv_data.requires_grad = True
             
             pred_labels = self.model(adv_data)
